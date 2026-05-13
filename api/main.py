@@ -1,55 +1,38 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from pydantic import BaseModel
-from core.analyzer import SecurityAnalyzer
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
-import subprocess, json, os
+from fastapi.staticfiles import StaticFiles
+from core.analyzer import SecurityAnalyzer
+import os
 
 app = FastAPI()
 analyzer = SecurityAnalyzer()
 
-class ScanRequest(BaseModel):
-    path: str
+app.mount("/dashboard", StaticFiles(directory="dashboard", html=True), name="dashboard")
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def get_dashboard():
-    with open("dashboard/index.html", "r") as f:
-        return f.read()
+def is_safe_path(path):
+    forbidden = ["/etc", "/proc", "/sys", "/data/data/com.termux/files/usr"]
+    return not any(path.startswith(p) for p in forbidden)
 
 @app.post("/analyze")
-async def analyze_repository(request: ScanRequest):
-    try:
-        result = subprocess.run(["bandit", "-r", request.path, "-f", "json"], capture_output=True, text=True)
-        report = analyzer.generate_remediation_plan(result.stdout)
-        return {"raw_issues_count": len(json.loads(result.stdout).get("results", [])), "ai_analysis": report}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def analyze_path(data: dict):
+    path = data.get('path', '')
+    if not path or not is_safe_path(path):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    results = analyzer.run_bandit(path)
+    ai_report = analyzer.get_ai_remediation(results)
+    return {"raw_issues_count": len(results), "ai_analysis": ai_report}
 
 @app.post("/upload-analyze")
-async def upload_and_analyze(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...)):
+    safe_name = os.path.basename(file.filename)
+    file_path = f"temp_{safe_name}"
     try:
-        # حفظ الملف المرفوع مؤقتاً
-        file_location = f"temp_{file.filename}"
-        with open(file_location, "wb+") as file_object:
-            file_object.write(file.file.read())
-        
-        # فحص الملف أمنياً
-        result = subprocess.run(["bandit", file_location, "-f", "json"], capture_output=True, text=True)
-        
-        # تحليل AI
-        report = analyzer.generate_remediation_plan(result.stdout)
-        
-        # حذف الملف المؤقت بعد الفحص
-        if os.path.exists(file_location):
-            os.remove(file_location)
-            
-        return {
-            "filename": file.filename, 
-            "raw_issues_count": len(json.loads(result.stdout).get("results", [])),
-            "ai_analysis": report
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+        results = analyzer.run_bandit(file_path)
+        ai_report = analyzer.get_ai_remediation(results)
+        return {"raw_issues_count": len(results), "ai_analysis": ai_report}
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
