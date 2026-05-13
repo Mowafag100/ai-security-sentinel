@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Security Sentinel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6 md:p-10">
+    <div class="max-w-4xl mx-auto text-left">
+        <h1 class="text-3xl font-bold text-blue-400 mb-2">🛡️ AI Security Sentinel</h1>
+        <p class="text-gray-400 mb-8 text-sm font-mono">Advanced AI Auditor Powered by TinyLlama</p>
+
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg mb-6 border-l-4 border-blue-500">
+            <h2 class="text-lg font-semibold mb-4 text-blue-300">Scan Local Repository</h2>
+            <input type="text" id="path" value="/data/data/com.termux/files/home/ai-security-sentinel" class="bg-gray-700 p-3 rounded-lg w-full mb-4 font-mono text-sm border border-gray-600 focus:border-blue-500 outline-none">
+            <button onclick="scanPath()" class="bg-blue-600 hover:bg-blue-700 transition p-3 rounded-lg w-full font-bold">Run Path Audit</button>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg mb-6 border-2 border-dashed border-gray-700">
+            <h2 class="text-lg font-semibold mb-4 text-green-400">Upload File for Analysis</h2>
+            <input type="file" id="fileInput" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-900 file:text-green-300 hover:file:bg-green-800 mb-4 cursor-pointer">
+            <button onclick="uploadAndScan()" class="bg-green-600 hover:bg-green-700 transition p-3 rounded-lg w-full font-bold">Upload & Analyze</button>
+        </div>
+
+        <div id="loading" class="hidden text-yellow-500 text-center animate-pulse mb-4 font-mono">AI is analyzing security patterns...</div>
+        <div id="results" class="hidden bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-blue-500">
+            <h2 id="count" class="text-xl font-bold text-red-400 mb-4"></h2>
+            <div class="bg-gray-900 p-4 rounded-lg">
+                <h3 class="text-blue-300 font-bold mb-2">AI Remediation Plan:</h3>
+                <pre id="report" class="whitespace-pre-wrap text-sm text-gray-300 font-mono"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+
+        function showLoading() { loading.classList.remove('hidden'); results.classList.add('hidden'); }
+        function hideLoading() { loading.classList.add('hidden'); }
+
+        async function scanPath() {
+            showLoading();
+            try {
+                const res = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: document.getElementById('path').value})
+                });
+                const data = await res.json();
+                displayResults(data);
+            } catch (e) { alert("Server Connection Error"); }
+            finally { hideLoading(); }
+        }
+
+        async function uploadAndScan() {
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput.files.length === 0) { alert("Please select a file first"); return; }
+            
+            showLoading();
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            try {
+                const res = await fetch('/upload-analyze', { method: 'POST', body: formData });
+                const data = await res.json();
+                displayResults(data);
+            } catch (e) { alert("Upload or Analysis Failed"); }
+            finally { hideLoading(); }
+        }
+
+        function displayResults(data) {
+            document.getElementById('count').innerText = data.raw_issues_count + " Security Issues Detected";
+            document.getElementById('report').innerText = data.ai_analysis;
+            results.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

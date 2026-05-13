@@ -1,0 +1,6 @@
+mcp
+bandit
+safety
+fastapi
+langchain_community
+ollama
